@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Góc học tập</title>
+<style>
+:root{--bg:#f6f3ec;--card:#fffdf8;--ink:#1f1d1a;--mut:#6b655a;--line:#e4ddcf;--ac:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#16150f;--card:#1f1d17;--ink:#ede8dc;--mut:#a39d90;--line:#33302a}}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,sans-serif}
+.box{width:min(380px,calc(100% - 32px));background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 22px}
+h1{font-size:20px;margin:0 0 4px} p{color:var(--mut);font-size:14px;margin:0 0 16px}
+form{display:flex;gap:8px} input{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+button{border:0;border-radius:10px;padding:10px 16px;background:var(--ac);color:#fff;font:inherit;font-weight:600}
+#msg{color:#b91c1c;font-size:14px;min-height:20px;margin:10px 0 0}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="box" id="box">
+  <h1>🔒 Tài liệu riêng</h1>
+  <p id="hint">Đang mở…</p>
+  <form id="f" class="hide"><input id="pw" type="password" placeholder="Mật khẩu" autocomplete="current-password"><button>Mở</button></form>
+  <p id="msg"></p>
+</div>
+<script>
+// Giải mã trang học: gzip + AES-GCM, khoá PBKDF2 từ mật khẩu (#k=... trong link, hoặc đã nhớ trên máy).
+const D = {"salt": "FPjY5nKnd7/Kto6NUrxvBg==", "iv": "z35mVxkUgP2cGt7e", "ct": "N0Ga3fya4LLQ9MDhILWCBUrUTIQ0dqQTak9iVW55GwP/nDpPj1zXmvMFghVDj9Op4IF1dSq6tzrhnHTskICWra2d7TC5uPUFffpS1ilCHI7yLRV7UH2UrpgWqdJONAMXQjvMuViL55cva8HxAgPtFSlUBNmHtQ0Vna9RxFNwuAdXBTHXa4mwjKXRwl/FojmBNaq1dtMYRs2aIuF6n4kiz9O31BgQXuS4+cf4F+fibYMTqz1zginu20BOqxq8yOTUcEPrMdZk1LkJT+UpqJGTobeCM4E8RGU3yjZTXeloXiNpNBjterChMQjhugvp9zKRatZ5UEj/gdGFvFejhR5RPAQmd9wRf5m5MydgfJsdpASqJmeTmWKh1KMyU/qZfWanKHGbRlJrWGjk29euIFDQN00rTCaA4MOYOfEbk8fKFQ7iCRix2ljYaOlywquMibeWcEDrxIbH1AyzNn2iyLgpP9M2yJOzBJPXS/i9aMWz4a5bKnxkrNrDQYTHeXnjBgNouXaDEU5GD0IQmIx6D0gR5AVmoIqE7Z9xaWouEasTPhmfLxWxRkbdKCZXzdjRuni7wQpnobTOw0Vuya+gfapLZiWuV3HHavatO92cq+rINYVLeRUBv1fh0TRWLNttQ7zE12RvHTCNgpEwquOeWkdN++hta5uMwR8VjQUuVh8IIzZemaX5VJf8bmgj5+d40PeiIlx6m5SjSmkeuHuCARkwk4Lfhk3lafIRi7oAyP59ghWvG7v5w0/LGoHNX7uIY+Ixw4+GozBUKjTU1WlbRxcKT/xtixX/diODXdPHRFD5I3IJb5IB0fyFf9ck9tMTXQDiynrcdbGItpfE5XEFV8J517Vv1B8pOOBa07wZLLljREaqKeRCqEAv+9yqqzubm9VOQfF2I5ZfSicn5e9gnWjf7t+VKR6dT3Zvmfl4PaAo3EcfggQTH0e0ANism0qk8pUdzgiK30odYwEwe4GX3JrDZWi8X0t1SbdQlTrlfwKZ9JpIi/KPe/KoIytx5V+Tm5XMl+wBJHRARHSpCdjYDaxtPZSH4nSevStR0r+7GgypuWxal6Oof0V5YJvTKcox9aKxKg/0cqH85aSWZ7HXVa2spDI/", "it": 300000};
+const STORE = 'hoc-tap-k';
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function unlock(pw) {
+  const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt:b64(D.salt), iterations:D.it, hash:'SHA-256'}, raw, {name:'AES-GCM', length:256}, false, ['decrypt']);
+  const buf = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64(D.iv)}, key, b64(D.ct));
+  return await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+async function tryOpen(pw, fromUser) {
+  try {
+    const html = await unlock(pw);
+    try { localStorage.setItem(STORE, pw); } catch (e) {}
+    history.replaceState(null, '', location.pathname + location.search); // xoá mật khẩu khỏi thanh địa chỉ
+    document.open(); document.write(html); document.close();
+    return true;
+  } catch (e) {
+    if (fromUser) document.getElementById('msg').textContent = 'Sai mật khẩu, thử lại.';
+    return false;
+  }
+}
+(async () => {
+  const m = location.hash.match(/[#&]k=([^&]+)/);
+  let saved = null; try { saved = localStorage.getItem(STORE); } catch (e) {}
+  for (const pw of [m && decodeURIComponent(m[1]), saved]) if (pw && await tryOpen(pw)) return;
+  if (saved) try { localStorage.removeItem(STORE); } catch (e) {}
+  document.getElementById('hint').textContent = 'Mở bằng đường link được gửi cho bạn, hoặc nhập mật khẩu.';
+  const f = document.getElementById('f'); f.classList.remove('hide');
+  f.addEventListener('submit', e => { e.preventDefault(); tryOpen(document.getElementById('pw').value.trim(), true); });
+})();
+</script>
+</body>
+</html>
